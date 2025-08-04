@@ -1,0 +1,27 @@
+{
+  "name": "game-specs-scraper",
+  "version": "1.0.0",
+  "description": "Backend para extrair requisitos mínimos de sistema de jogos via Puppeteer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "puppeteer",
+    "scraper",
+    "games",
+    "express"
+  ],
+  "author": "Seu Nome",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "puppeteer": "^21.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "type": "commonjs"
+}
