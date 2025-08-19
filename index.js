@@ -9,6 +9,9 @@ app.use(
   })
 );
 
+app.get("/", (_req, res) => res.status(200).send("ok"));
+app.get("/health", (_req, res) => res.status(200).send("ok"));
+
 app.get("/specs", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "URL is required" });
@@ -17,7 +20,11 @@ app.get("/specs", async (req, res) => {
   try {
     browser = await puppeteer.launch({
       headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+      ],
     });
 
     const page = await browser.newPage();
