@@ -5,6 +5,12 @@ const cors = require("cors");
 const app = express();
 app.use(cors({ origin: "*" }));
 
+// Caminho do Chrome da imagem do Puppeteer (com fallback via env)
+const CHROME_PATH =
+  process.env.PUPPETEER_EXECUTABLE_PATH ||
+  process.env.CHROME_PATH ||
+  "/usr/bin/google-chrome";
+
 app.get("/", (_req, res) => res.status(200).send("ok"));
 app.get("/health", (_req, res) => res.status(200).send("ok"));
 
@@ -15,11 +21,14 @@ app.get("/specs", async (req, res) => {
   let browser;
   try {
     browser = await puppeteer.launch({
-      headless: "new",
+      headless: true, // usar true em ambientes serverless
+      executablePath: CHROME_PATH,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--single-process",
       ],
     });
 
@@ -42,7 +51,7 @@ app.get("/specs", async (req, res) => {
     });
 
     // 3) Vai para a página e espera a rede acalmar
-    await page.goto(url, {
+    await page.goto(String(url), {
       waitUntil: ["domcontentloaded", "networkidle2"],
       timeout: 30000,
     });

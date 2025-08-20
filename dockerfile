@@ -1,10 +1,14 @@
+# Dockerfile
 FROM ghcr.io/puppeteer/puppeteer:latest
-ENV PUPPETEER_SKIP_DOWNLOAD=1
+
+# Aponta para o Chrome instalado na imagem
+ENV PUPPETEER_BROWSER=chrome \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY . .
-ENV NODE_ENV=production
-ENV PORT=8080
+
 EXPOSE 8080
 CMD ["node", "index.js"]
