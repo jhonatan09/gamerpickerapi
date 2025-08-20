@@ -5,12 +5,6 @@ const cors = require("cors");
 const app = express();
 app.use(cors({ origin: "*" }));
 
-// Caminho do Chrome da imagem do Puppeteer (com fallback via env)
-const CHROME_PATH =
-  process.env.PUPPETEER_EXECUTABLE_PATH ||
-  process.env.CHROME_PATH ||
-  "/usr/bin/google-chrome";
-
 app.get("/", (_req, res) => res.status(200).send("ok"));
 app.get("/health", (_req, res) => res.status(200).send("ok"));
 
@@ -20,9 +14,13 @@ app.get("/specs", async (req, res) => {
 
   let browser;
   try {
+    // Preferir variável de ambiente; senão usar o caminho que o Puppeteer conhece
+    const executablePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+
     browser = await puppeteer.launch({
-      headless: true, // usar true em ambientes serverless
-      executablePath: CHROME_PATH,
+      headless: "new", // headless moderno
+      executablePath,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -34,29 +32,22 @@ app.get("/specs", async (req, res) => {
 
     const page = await browser.newPage();
 
-    // 1) User-Agent decente para reduzir bloqueios
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     );
 
-    // 2) Intercepta para não baixar coisas pesadas
     await page.setRequestInterception(true);
-    page.on("request", (reqInt) => {
-      const type = reqInt.resourceType();
-      if (["image", "media", "font", "stylesheet"].includes(type)) {
-        reqInt.abort();
-      } else {
-        reqInt.continue();
-      }
+    page.on("request", (r) => {
+      const t = r.resourceType();
+      if (["image", "media", "font", "stylesheet"].includes(t)) r.abort();
+      else r.continue();
     });
 
-    // 3) Vai para a página e espera a rede acalmar
     await page.goto(String(url), {
       waitUntil: ["domcontentloaded", "networkidle2"],
       timeout: 30000,
     });
 
-    // Espera algum container plausível (não falha se não achar)
     await page
       .waitForSelector(
         ".col-sm-6, #system-requirements, .system-requirements, .minimum-requirements, .requirements",
@@ -66,28 +57,22 @@ app.get("/specs", async (req, res) => {
 
     const specs = await page.evaluate(() => {
       const out = {};
-
-      // mapa de chaves aceitas
       const normalizeMap = new Map([
         ["os", "os"],
         ["operating system", "os"],
         ["sistema operacional", "os"],
-
         ["processor", "processor"],
         ["cpu", "processor"],
         ["processador", "processor"],
-
         ["memory", "memory"],
         ["memória", "memory"],
         ["memoria", "memory"],
         ["ram", "memory"],
-
         ["graphics", "graphics"],
         ["gpu", "graphics"],
         ["placa de vídeo", "graphics"],
         ["placa de video", "graphics"],
         ["video", "graphics"],
-
         ["storage", "storage"],
         ["hard drive", "storage"],
         ["disco rígido", "storage"],
@@ -99,12 +84,9 @@ app.get("/specs", async (req, res) => {
         if (!rawKey || !rawVal) return;
         const key = rawKey.replace(/:$/, "").trim().toLowerCase();
         const norm = normalizeMap.get(key);
-        if (norm && !out[norm]) {
-          out[norm] = rawVal.replace(/\s+/g, " ").trim();
-        }
+        if (norm && !out[norm]) out[norm] = rawVal.replace(/\s+/g, " ").trim();
       };
 
-      // 1) Padrão “label ao lado” (span/strong/b/dt) + próximo irmão
       const containers = document.querySelectorAll(
         ".col-sm-6, #system-requirements, .system-requirements, .minimum-requirements, .requirements, .card, section, article, main"
       );
@@ -114,25 +96,19 @@ app.get("/specs", async (req, res) => {
         labels.forEach((label) => {
           const text = label.textContent?.trim();
           if (!text) return;
-
-          // dt -> dd; senão, próximo elemento
           let valueEl = label.closest("dt")
             ? label.closest("dt").nextElementSibling
             : label.nextElementSibling;
-
-          // fallback: busca p/li dentro do mesmo pai
           if (!valueEl) {
             valueEl = label.parentElement?.querySelector(
               "p,li,dd,span:not(.text-muted)"
             );
           }
-
           const value = valueEl?.textContent;
           setPair(text, value);
         });
       });
 
-      // 2) Fallback para linhas “Label: Valor” em <li> ou <p>
       const lineNodes = document.querySelectorAll("li, p");
       lineNodes.forEach((node) => {
         const t = node.textContent?.replace(/\s+/g, " ").trim() || "";
@@ -146,7 +122,6 @@ app.get("/specs", async (req, res) => {
     });
 
     if (!specs || Object.keys(specs).length === 0) {
-      // Se não achou nada, devolve 204 para o cliente tratar.
       return res.status(204).send();
     }
 
