@@ -1,3 +1,4 @@
+const fs = require("fs");
 const express = require("express");
 const puppeteer = require("puppeteer");
 const cors = require("cors");
@@ -14,12 +15,27 @@ app.get("/specs", async (req, res) => {
 
   let browser;
   try {
-    // Preferir variável de ambiente; senão usar o caminho que o Puppeteer conhece
+    // Resolve o executável do Chrome/Chromium com fallback seguro
+    const candidates = [
+      process.env.PUPPETEER_EXECUTABLE_PATH,
+      puppeteer.executablePath(),
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/google-chrome",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+    ].filter(Boolean);
+
     const executablePath =
-      process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+      candidates.find((p) => {
+        try {
+          return fs.existsSync(p);
+        } catch {
+          return false;
+        }
+      }) || undefined; // deixa o Puppeteer decidir se nada existir
 
     browser = await puppeteer.launch({
-      headless: "new", // headless moderno
+      headless: "new",
       executablePath,
       args: [
         "--no-sandbox",
@@ -32,10 +48,12 @@ app.get("/specs", async (req, res) => {
 
     const page = await browser.newPage();
 
+    // User-Agent decente para reduzir bloqueios
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     );
 
+    // Bloqueia recursos pesados (imagem, mídia, etc.)
     await page.setRequestInterception(true);
     page.on("request", (r) => {
       const t = r.resourceType();
@@ -43,11 +61,12 @@ app.get("/specs", async (req, res) => {
       else r.continue();
     });
 
-    await page.goto(String(url), {
+    await page.goto(url, {
       waitUntil: ["domcontentloaded", "networkidle2"],
       timeout: 30000,
     });
 
+    // Tenta achar um container plausível (não falha se não achar)
     await page
       .waitForSelector(
         ".col-sm-6, #system-requirements, .system-requirements, .minimum-requirements, .requirements",
@@ -84,7 +103,9 @@ app.get("/specs", async (req, res) => {
         if (!rawKey || !rawVal) return;
         const key = rawKey.replace(/:$/, "").trim().toLowerCase();
         const norm = normalizeMap.get(key);
-        if (norm && !out[norm]) out[norm] = rawVal.replace(/\s+/g, " ").trim();
+        if (norm && !out[norm]) {
+          out[norm] = rawVal.replace(/\s+/g, " ").trim();
+        }
       };
 
       const containers = document.querySelectorAll(
